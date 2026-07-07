@@ -1,4 +1,4 @@
-const CACHE_NAME = "vita-rppg-v4";
+const CACHE_NAME = "vita-rppg-v5";
 const APP_SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (event) => {

@@ -1,9 +1,12 @@
 import { Activity, Download, Film, HeartPulse, Sparkles } from "lucide-react";
+import { useState } from "react";
 import { CameraStage } from "./components/CameraStage";
 import { CinematicBackdrop } from "./components/CinematicBackdrop";
 import { SpectrumChart, TrendChart, WaveChart } from "./components/Charts";
 import { LocalRecordsPanel } from "./components/LocalRecordsPanel";
+import { MeasurementProtocolPanel } from "./components/MeasurementProtocolPanel";
 import { ProfilePanel } from "./components/ProfilePanel";
+import { RecoveryStatusCard } from "./components/RecoveryStatusCard";
 import { SessionReportPanel } from "./components/SessionReportPanel";
 import { StatusPanel } from "./components/StatusPanel";
 import { useCinematicMotion } from "./hooks/useCinematicMotion";
@@ -11,6 +14,7 @@ import { useLocalRecords } from "./hooks/useLocalRecords";
 import { useProfile } from "./hooks/useProfile";
 import { usePwaInstall } from "./hooks/usePwaInstall";
 import { useRppgPipeline } from "./hooks/useRppgPipeline";
+import { DEFAULT_CHECK_IN, type AthleteCheckIn, type MeasurementContext } from "./lib/localDb";
 import "./styles.css";
 
 function HeartReadout({
@@ -40,9 +44,15 @@ function HeartReadout({
 
 export default function App() {
   useCinematicMotion();
+  const [measurementContext, setMeasurementContext] = useState<MeasurementContext>("morning");
+  const [checkIn, setCheckIn] = useState<AthleteCheckIn>(DEFAULT_CHECK_IN);
   const { videoRef, overlayRef, state, start, startDemo, stop, refreshDevices, setSelectedDeviceId } =
     useRppgPipeline();
-  const { sessions, storageError, clearAll, exportJson } = useLocalRecords(state);
+  const { sessions, storageError, clearAll, exportJson, exportCsv } = useLocalRecords(
+    state,
+    measurementContext,
+    checkIn,
+  );
   const { profile, profileError, updateProfile } = useProfile();
   const { canInstall, installed, install } = usePwaInstall();
 
@@ -129,6 +139,13 @@ export default function App() {
 
               <aside className="data-stack">
                 <HeartReadout bpm={state.bpm} status={state.status} calibrationRemaining={state.calibrationRemaining} />
+                <MeasurementProtocolPanel
+                  context={measurementContext}
+                  checkIn={checkIn}
+                  disabled={state.running}
+                  onContextChange={setMeasurementContext}
+                  onCheckInChange={setCheckIn}
+                />
                 <StatusPanel state={state} />
 
                 <section className="panel chart-panel">
@@ -158,6 +175,7 @@ export default function App() {
               <p>测量结束后自动生成本次报告、近期趋势和训练调整建议。</p>
             </div>
             <div className="report-stage-grid">
+              <RecoveryStatusCard profile={profile} sessions={sessions} />
               <ProfilePanel profile={profile} error={profileError} onSave={updateProfile} />
               <SessionReportPanel profile={profile} sessions={sessions} />
               <section className="panel chart-panel history-panel-wide">
@@ -167,7 +185,13 @@ export default function App() {
                 </div>
                 <TrendChart history={state.history} />
               </section>
-              <LocalRecordsPanel sessions={sessions} error={storageError} onExport={exportJson} onClear={clearAll} />
+              <LocalRecordsPanel
+                sessions={sessions}
+                error={storageError}
+                onExport={exportJson}
+                onExportCsv={exportCsv}
+                onClear={clearAll}
+              />
             </div>
           </div>
         </section>

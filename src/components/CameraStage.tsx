@@ -1,5 +1,5 @@
 import { Camera, FlaskConical, RefreshCcw, Square } from "lucide-react";
-import type { RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import type { CameraDevice, PipelineState } from "../hooks/useRppgPipeline";
 import { TrendChart, WaveChart } from "./Charts";
 
@@ -45,6 +45,20 @@ export function CameraStage({
 }: CameraStageProps) {
   const liveQuality = Math.round(state.signalQuality * 100);
   const lockText = state.status === "CALIBRATING" ? `${state.calibrationRemaining.toFixed(1)}s` : state.acceptedSignal ? "LOCKED" : "WAIT";
+  const countdown = state.running && state.elapsedSeconds < 3 ? 3 - Math.floor(state.elapsedSeconds) : null;
+  const lockVibratedRef = useRef(false);
+
+  useEffect(() => {
+    if (!state.running) {
+      lockVibratedRef.current = false;
+      return;
+    }
+
+    if (state.acceptedSignal && !lockVibratedRef.current) {
+      lockVibratedRef.current = true;
+      navigator.vibrate?.([35, 25, 35]);
+    }
+  }, [state.acceptedSignal, state.running]);
 
   return (
     <section className="camera-stage">
@@ -103,6 +117,10 @@ export function CameraStage({
         <div className="corner corner-br" />
         <div className="background-tag">背景对照</div>
         <div className="roi-tag">脸部 ROI</div>
+        <div className={`face-guide-ring face-guide-${state.guidance.severity}`}>
+          <span>{state.guidance.message}</span>
+        </div>
+        {countdown !== null && <div className="countdown-overlay">{countdown}</div>}
       </div>
 
       <div className="live-chart-dock">

@@ -1,7 +1,8 @@
 import type { HistoryPoint, PipelineMode } from "../hooks/useRppgPipeline";
+import type { HRVMetrics } from "./pos";
 
 const DB_NAME = "vita-rppg-local";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const SESSION_STORE = "sessions";
 const PROFILE_STORE = "profile";
 const DEFAULT_PROFILE_ID = "default";
@@ -12,9 +13,27 @@ export interface SavedTrendPoint {
   confidence: number;
 }
 
+export type MeasurementContext = "general" | "morning" | "post_exercise" | "sleep_prep";
+
+export interface AthleteCheckIn {
+  rpe: number | null;
+  sleepQuality: number | null;
+  willingness: "high" | "medium" | "low" | null;
+  note: string;
+}
+
+export const DEFAULT_CHECK_IN: AthleteCheckIn = {
+  rpe: null,
+  sleepQuality: null,
+  willingness: null,
+  note: "",
+};
+
 export interface MeasurementSession {
   id: string;
   mode: Exclude<PipelineMode, "idle">;
+  context: MeasurementContext;
+  checkIn: AthleteCheckIn;
   startedAt: number;
   endedAt: number | null;
   updatedAt: number;
@@ -24,6 +43,10 @@ export interface MeasurementSession {
   maxBpm: number | null;
   avgConfidence: number;
   lastSnrDb: number;
+  avgRespirationRate: number | null;
+  respirationConfidence: number;
+  hrv: HRVMetrics | null;
+  bestWindowSeconds: number;
   pointCount: number;
   points: SavedTrendPoint[];
 }
@@ -105,10 +128,16 @@ function withStore<T>(
   );
 }
 
-export function createSession(mode: Exclude<PipelineMode, "idle">): MeasurementSession {
+export function createSession(
+  mode: Exclude<PipelineMode, "idle">,
+  context: MeasurementContext,
+  checkIn: AthleteCheckIn,
+): MeasurementSession {
   return {
     id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     mode,
+    context,
+    checkIn,
     startedAt: Date.now(),
     endedAt: null,
     updatedAt: Date.now(),
@@ -118,9 +147,42 @@ export function createSession(mode: Exclude<PipelineMode, "idle">): MeasurementS
     maxBpm: null,
     avgConfidence: 0,
     lastSnrDb: 0,
+    avgRespirationRate: null,
+    respirationConfidence: 0,
+    hrv: null,
+    bestWindowSeconds: 0,
     pointCount: 0,
     points: [],
   };
+}
+
+function selectBestWindow(points: readonly SavedTrendPoint[], targetSeconds = 10): SavedTrendPoint[] {
+  if (points.length < 5) return [...points];
+
+  let bestPoints: SavedTrendPoint[] = [];
+  let bestScore = -Infinity;
+
+  for (let start = 0; start < points.length; start += 1) {
+    const startOffset = points[start].offsetSeconds;
+    const windowPoints = points.filter(
+      (point) => point.offsetSeconds >= startOffset && point.offsetSeconds <= startOffset + targetSeconds,
+    );
+    if (windowPoints.length < 5) continue;
+
+    const bpms = windowPoints.map((point) => point.bpm);
+    const confidences = windowPoints.map((point) => point.confidence);
+    const avgConfidence = confidences.reduce((sum, value) => sum + value, 0) / confidences.length;
+    const bpmMean = bpms.reduce((sum, value) => sum + value, 0) / bpms.length;
+    const variance = bpms.reduce((sum, value) => sum + (value - bpmMean) ** 2, 0) / bpms.length;
+    const score = avgConfidence * 100 - Math.sqrt(variance) * 2 + Math.min(windowPoints.length, targetSeconds) * 0.4;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestPoints = windowPoints;
+    }
+  }
+
+  return bestPoints.length ? bestPoints : [...points];
 }
 
 export function summarizeSession(
@@ -129,6 +191,9 @@ export function summarizeSession(
   durationSeconds: number,
   snrDb: number,
   endedAt: number | null,
+  respirationRate: number | null = null,
+  respirationConfidence = 0,
+  hrv: HRVMetrics | null = null,
 ): MeasurementSession {
   const firstT = history[0]?.t ?? 0;
   const points = history.map((point) => ({
@@ -136,10 +201,15 @@ export function summarizeSession(
     bpm: Number(point.bpm.toFixed(2)),
     confidence: Number(point.confidence.toFixed(3)),
   }));
-  const bpms = points.map((point) => point.bpm);
-  const confidences = points.map((point) => point.confidence);
+  const bestPoints = selectBestWindow(points);
+  const bpms = bestPoints.map((point) => point.bpm);
+  const confidences = bestPoints.map((point) => point.confidence);
   const avg = (values: readonly number[]) =>
     values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
+  const bestWindowSeconds =
+    bestPoints.length > 1
+      ? Number((bestPoints[bestPoints.length - 1].offsetSeconds - bestPoints[0].offsetSeconds).toFixed(1))
+      : 0;
 
   return {
     ...session,
@@ -151,6 +221,10 @@ export function summarizeSession(
     maxBpm: bpms.length ? Number(Math.max(...bpms).toFixed(1)) : null,
     avgConfidence: Number(avg(confidences).toFixed(3)),
     lastSnrDb: Number(snrDb.toFixed(1)),
+    avgRespirationRate: respirationRate === null ? session.avgRespirationRate : Number(respirationRate.toFixed(1)),
+    respirationConfidence: Number(Math.max(session.respirationConfidence ?? 0, respirationConfidence).toFixed(3)),
+    hrv: hrv ?? session.hrv ?? null,
+    bestWindowSeconds,
     pointCount: points.length,
     points,
   };
@@ -197,4 +271,66 @@ export async function exportSessionsJson(): Promise<string> {
     null,
     2,
   );
+}
+
+function csvEscape(value: unknown): string {
+  const text = value === null || value === undefined ? "" : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+export async function exportSessionsCsv(): Promise<string> {
+  const sessions = await getSessions();
+  const header = [
+    "session_id",
+    "context",
+    "mode",
+    "started_at",
+    "duration_seconds",
+    "avg_bpm",
+    "min_bpm",
+    "max_bpm",
+    "avg_respiration_rate",
+    "rmssd",
+    "sdnn",
+    "pnn50",
+    "stress_index",
+    "avg_confidence",
+    "snr_db",
+    "rpe",
+    "sleep_quality",
+    "willingness",
+    "point_offset_seconds",
+    "point_bpm",
+    "point_confidence",
+  ];
+  const rows = sessions.flatMap((session) => {
+    const base = [
+      session.id,
+      session.context ?? "general",
+      session.mode,
+      new Date(session.startedAt).toISOString(),
+      session.durationSeconds,
+      session.avgBpm,
+      session.minBpm,
+      session.maxBpm,
+      session.avgRespirationRate,
+      session.hrv?.rmssd,
+      session.hrv?.sdnn,
+      session.hrv?.pnn50,
+      session.hrv?.stressIndex,
+      session.avgConfidence,
+      session.lastSnrDb,
+      session.checkIn?.rpe,
+      session.checkIn?.sleepQuality,
+      session.checkIn?.willingness,
+    ];
+
+    if (session.points.length === 0) {
+      return [[...base, "", "", ""]];
+    }
+
+    return session.points.map((point) => [...base, point.offsetSeconds, point.bpm, point.confidence]);
+  });
+
+  return [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
 }

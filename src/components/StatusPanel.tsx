@@ -59,7 +59,7 @@ export function StatusPanel({ state }: StatusPanelProps) {
     <section className="panel status-panel">
       <div className="panel-title">
         <Signal size={16} />
-        <span>STATUS</span>
+        <span>状态</span>
       </div>
       <div className="status-grid">
         <div className={`status-chip status-${state.status.toLowerCase()}`}>{statusText(state)}</div>
@@ -93,9 +93,23 @@ export function StatusPanel({ state }: StatusPanelProps) {
           <span>{state.secureContext && state.mediaDevicesSupported ? "BROWSER OK" : "BROWSER LIMITED"}</span>
         </div>
       </div>
+      <div className="metrics-row vitals-row">
+        <div className="metric">
+          <Activity size={15} />
+          <span>呼吸 {state.respirationRate === null ? "--" : `${state.respirationRate.toFixed(1)}/min`}</span>
+        </div>
+        <div className="metric">
+          <Gauge size={15} />
+          <span>RMSSD {state.hrv ? `${state.hrv.rmssd}ms` : "--"}</span>
+        </div>
+        <div className="metric">
+          <Signal size={15} />
+          <span>HRV {state.hrv ? state.hrv.stressIndex : "--"}</span>
+        </div>
+      </div>
       <div className="quality-block">
         <div className="quality-label">
-          <span>SIGNAL QUALITY</span>
+          <span>信号质量</span>
           <span>{quality}%</span>
         </div>
         <div className="quality-track">

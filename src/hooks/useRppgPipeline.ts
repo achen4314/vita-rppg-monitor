@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BrowserFaceDetector, type FaceDetection } from "../lib/faceDetector";
 import { type SpectrumBin } from "../lib/fft";
-import { analyzeRppgWindow, type RppgAnalysis } from "../lib/pos";
+import { analyzeRppgWindow, type HRVMetrics, type RppgAnalysis } from "../lib/pos";
 import {
   assessGuidance,
   averageRgbFromRois,
@@ -53,6 +53,9 @@ export interface PipelineState {
   bpm: number | null;
   rawBpm: number | null;
   confidence: number;
+  respirationRate: number | null;
+  respirationConfidence: number;
+  hrv: HRVMetrics | null;
   snrDb: number;
   peakEnergyRatio: number;
   elapsedSeconds: number;
@@ -106,6 +109,9 @@ const INITIAL_STATE: PipelineState = {
   bpm: null,
   rawBpm: null,
   confidence: 0,
+  respirationRate: null,
+  respirationConfidence: 0,
+  hrv: null,
   snrDb: 0,
   peakEnergyRatio: 0,
   elapsedSeconds: 0,
@@ -269,12 +275,13 @@ function syntheticRgbSample(now: number, startTime: number, bpm = DEMO_BPM): {
   const elapsedSeconds = Math.max(0, (now - startTime) / 1000);
   const pulse = Math.sin(2 * Math.PI * (bpm / 60) * elapsedSeconds);
   const harmonic = 0.32 * Math.sin(4 * Math.PI * (bpm / 60) * elapsedSeconds + 0.45);
+  const respiration = 0.018 * Math.sin(2 * Math.PI * 0.23 * elapsedSeconds + 0.2);
   const drift = 0.012 * Math.sin(2 * Math.PI * 0.08 * elapsedSeconds);
   const shimmer = 0.004 * Math.sin(2 * Math.PI * 8.7 * elapsedSeconds);
   const wave = pulse + harmonic;
-  const skinR = 156 * (1 + drift - 0.0024 * wave + shimmer);
-  const skinG = 111 * (1 + drift + 0.0062 * wave - shimmer * 0.4);
-  const skinB = 96 * (1 + drift - 0.0038 * wave + shimmer * 0.2);
+  const skinR = 156 * (1 + drift + respiration - 0.0024 * wave + shimmer);
+  const skinG = 111 * (1 + drift + respiration * 0.82 + 0.0062 * wave - shimmer * 0.4);
+  const skinB = 96 * (1 + drift + respiration * 0.55 - 0.0038 * wave + shimmer * 0.2);
   const backgroundR = 20 * (1 + 0.003 * Math.sin(2 * Math.PI * 0.17 * elapsedSeconds));
   const backgroundG = 27 * (1 + 0.003 * Math.sin(2 * Math.PI * 0.11 * elapsedSeconds));
   const backgroundB = 35 * (1 + 0.003 * Math.sin(2 * Math.PI * 0.14 * elapsedSeconds));
@@ -659,6 +666,9 @@ export function useRppgPipeline() {
       let rawBpm: number | null = null;
       let visibleBpm: number | null = null;
       let confidence = 0;
+      let respirationRate: number | null = null;
+      let respirationConfidence = 0;
+      let hrv: HRVMetrics | null = null;
       let snrDb = 0;
       let peakEnergyRatio = 0;
       let signalQuality = 0;
@@ -677,6 +687,9 @@ export function useRppgPipeline() {
 
         rawBpm = skinAnalysis.bpm;
         confidence = skinAnalysis.snr.confidence;
+        respirationRate = skinAnalysis.respirationRate;
+        respirationConfidence = skinAnalysis.respirationConfidence;
+        hrv = skinAnalysis.hrv;
         snrDb = skinAnalysis.snr.snrDb;
         peakEnergyRatio = skinAnalysis.snr.peakEnergyRatio;
         skinSpectrum = skinAnalysis.spectrum.bins;
@@ -723,6 +736,9 @@ export function useRppgPipeline() {
         bpm: elapsedMs >= CALIBRATION_MS ? visibleBpm : null,
         rawBpm: elapsedMs >= CALIBRATION_MS ? rawBpm : null,
         confidence,
+        respirationRate: elapsedMs >= CALIBRATION_MS ? respirationRate : null,
+        respirationConfidence,
+        hrv,
         snrDb,
         peakEnergyRatio,
         signalQuality,
@@ -811,6 +827,9 @@ export function useRppgPipeline() {
       let rawBpm: number | null = null;
       let visibleBpm: number | null = null;
       let confidence = 0;
+      let respirationRate: number | null = null;
+      let respirationConfidence = 0;
+      let hrv: HRVMetrics | null = null;
       let snrDb = 0;
       let peakEnergyRatio = 0;
       let signalQuality = 0;
@@ -828,6 +847,9 @@ export function useRppgPipeline() {
         const backgroundAnalysis = analyzeRppgWindow(backgroundWindow);
         rawBpm = skinAnalysis.bpm;
         confidence = skinAnalysis.snr.confidence;
+        respirationRate = skinAnalysis.respirationRate;
+        respirationConfidence = skinAnalysis.respirationConfidence;
+        hrv = skinAnalysis.hrv;
         snrDb = skinAnalysis.snr.snrDb;
         peakEnergyRatio = skinAnalysis.snr.peakEnergyRatio;
         skinSpectrum = skinAnalysis.spectrum.bins;
@@ -872,6 +894,9 @@ export function useRppgPipeline() {
         bpm: elapsedMs >= CALIBRATION_MS ? visibleBpm : null,
         rawBpm: elapsedMs >= CALIBRATION_MS ? rawBpm : null,
         confidence,
+        respirationRate: elapsedMs >= CALIBRATION_MS ? respirationRate : null,
+        respirationConfidence,
+        hrv,
         snrDb,
         peakEnergyRatio,
         signalQuality,

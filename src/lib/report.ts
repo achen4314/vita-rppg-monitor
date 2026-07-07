@@ -23,6 +23,12 @@ export interface SessionReport {
   trendLabel: string;
   qualityLabel: string;
   zones: TrainingZones | null;
+  weeklySummary: {
+    sessionCount: number;
+    avgRestingBpm: number | null;
+    avgRmssd: number | null;
+    recoveryScore: number | null;
+  };
   suggestions: ReportSuggestion[];
 }
 
@@ -37,6 +43,43 @@ function round1(value: number): number {
 
 function completedSessions(sessions: readonly MeasurementSession[]): MeasurementSession[] {
   return sessions.filter((session) => session.pointCount > 0 && session.avgBpm !== null);
+}
+
+function weightedBaseline(sessions: readonly MeasurementSession[]): number | null {
+  const values = sessions
+    .filter((session) => session.avgBpm !== null)
+    .slice(0, 14)
+    .map((session) => session.avgBpm as number);
+  if (values.length === 0) return null;
+
+  let weightedSum = 0;
+  let weightSum = 0;
+  values.forEach((value, index) => {
+    const weight = Math.exp(-index / 4.5);
+    weightedSum += value * weight;
+    weightSum += weight;
+  });
+  return weightedSum / Math.max(1e-6, weightSum);
+}
+
+function weeklySummary(sessions: readonly MeasurementSession[]): SessionReport["weeklySummary"] {
+  const weekStart = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const week = completedSessions(sessions).filter((session) => session.startedAt >= weekStart);
+  const morning = week.filter((session) => session.context === "morning" || !session.context);
+  const avgRestingBpm = avg(morning.map((session) => session.avgBpm).filter((value): value is number => value !== null));
+  const avgRmssd = avg(week.map((session) => session.hrv?.rmssd ?? null).filter((value): value is number => value !== null));
+  const recoveryScore = avg(
+    week
+      .map((session) => readinessFrom(session, null))
+      .filter((value): value is number => value !== null),
+  );
+
+  return {
+    sessionCount: week.length,
+    avgRestingBpm: avgRestingBpm === null ? null : round1(avgRestingBpm),
+    avgRmssd: avgRmssd === null ? null : round1(avgRmssd),
+    recoveryScore: recoveryScore === null ? null : Math.round(recoveryScore),
+  };
 }
 
 function estimateTrainingZones(age: number | null): TrainingZones | null {
@@ -72,7 +115,19 @@ function readinessFrom(latest: MeasurementSession | null, delta: number | null):
   const trendPenalty = delta === null ? 8 : Math.max(0, delta - 2) * 3.2;
   const instabilityPenalty =
     latest.minBpm !== null && latest.maxBpm !== null ? Math.max(0, latest.maxBpm - latest.minBpm - 8) * 1.4 : 0;
-  return Math.round(Math.max(0, Math.min(100, 96 - qualityPenalty - snrPenalty - trendPenalty - instabilityPenalty)));
+  const hrvPenalty = latest.hrv ? Math.max(0, 32 - latest.hrv.rmssd) * 0.42 + Math.max(0, latest.hrv.stressIndex - 68) * 0.18 : 6;
+  const sleepPenalty = latest.checkIn?.sleepQuality ? Math.max(0, 4 - latest.checkIn.sleepQuality) * 6 : 4;
+  const rpePenalty = latest.checkIn?.rpe ? Math.max(0, latest.checkIn.rpe - 6) * 3.5 : 0;
+  const willingnessPenalty = latest.checkIn?.willingness === "low" ? 12 : latest.checkIn?.willingness === "medium" ? 4 : 0;
+  return Math.round(
+    Math.max(
+      0,
+      Math.min(
+        100,
+        96 - qualityPenalty - snrPenalty - trendPenalty - instabilityPenalty - hrvPenalty - sleepPenalty - rpePenalty - willingnessPenalty,
+      ),
+    ),
+  );
 }
 
 function readinessLabel(score: number | null): string {
@@ -105,12 +160,13 @@ export function buildSessionReport(
   const completed = completedSessions(sessions);
   const latest = completed[0] ?? null;
   const previous = latest ? completed.filter((session) => session.id !== latest.id).slice(0, 7) : completed.slice(0, 7);
-  const baseline = avg(previous.map((session) => session.avgBpm).filter((value): value is number => value !== null));
+  const baseline = weightedBaseline(previous);
   const delta =
     latest?.avgBpm !== null && latest?.avgBpm !== undefined && baseline !== null ? round1(latest.avgBpm - baseline) : null;
   const readinessScore = readinessFrom(latest, delta);
   const zones = estimateTrainingZones(profile.age);
   const suggestions: ReportSuggestion[] = [];
+  const weekly = weeklySummary(sessions);
 
   if (!latest) {
     suggestions.push({
@@ -124,6 +180,22 @@ export function buildSessionReport(
         title: "本次信号质量偏低",
         body: "建议在均匀正面光下复测，保持脸部稳定，避免背景闪烁或强反光。低质量样本不建议用于训练决策。",
         severity: "action",
+      });
+    }
+
+    if (latest.context === "morning" && delta !== null && reportablePercentIncrease(latest.avgBpm, baseline) >= 12) {
+      suggestions.push({
+        title: "晨起心率异常升高",
+        body: "本次晨起读数比近期基线高出约 12% 以上，今天优先关注恢复、补水和睡眠负债。",
+        severity: "action",
+      });
+    }
+
+    if (latest.hrv && latest.hrv.rmssd < 24) {
+      suggestions.push({
+        title: "HRV 偏低",
+        body: "RMSSD 偏低通常提示副交感恢复不足。建议减少高强度刺激，并在明早复测确认趋势。",
+        severity: "watch",
       });
     }
 
@@ -177,6 +249,12 @@ export function buildSessionReport(
     trendLabel: trendLabel(delta),
     qualityLabel: qualityLabel(latest),
     zones,
+    weeklySummary: weekly,
     suggestions: suggestions.slice(0, 5),
   };
+}
+
+function reportablePercentIncrease(current: number | null, baseline: number | null): number {
+  if (current === null || baseline === null || baseline <= 0) return 0;
+  return ((current - baseline) / baseline) * 100;
 }

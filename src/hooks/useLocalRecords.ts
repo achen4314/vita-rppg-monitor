@@ -4,13 +4,21 @@ import {
   clearSessions,
   createSession,
   exportSessionsJson,
+  exportSessionsCsv,
   getSessions,
   saveSession,
   summarizeSession,
+  DEFAULT_CHECK_IN,
+  type AthleteCheckIn,
   type MeasurementSession,
+  type MeasurementContext,
 } from "../lib/localDb";
 
-export function useLocalRecords(state: PipelineState) {
+export function useLocalRecords(
+  state: PipelineState,
+  measurementContext: MeasurementContext = "general",
+  checkIn: AthleteCheckIn = DEFAULT_CHECK_IN,
+) {
   const [sessions, setSessions] = useState<MeasurementSession[]>([]);
   const [storageError, setStorageError] = useState<string | null>(null);
   const activeSessionRef = useRef<MeasurementSession | null>(null);
@@ -47,6 +55,17 @@ export function useLocalRecords(state: PipelineState) {
     URL.revokeObjectURL(url);
   }, []);
 
+  const exportCsv = useCallback(async () => {
+    const csv = await exportSessionsCsv();
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `vita-rppg-records-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
   useEffect(() => {
     void reload();
   }, [reload]);
@@ -54,7 +73,7 @@ export function useLocalRecords(state: PipelineState) {
   useEffect(() => {
     if (state.running && (state.mode === "camera" || state.mode === "demo") && !activeSessionRef.current) {
       const mode = state.mode;
-      activeSessionRef.current = createSession(mode);
+      activeSessionRef.current = createSession(mode, measurementContext, checkIn);
       lastSavedPointCountRef.current = 0;
     }
 
@@ -62,12 +81,18 @@ export function useLocalRecords(state: PipelineState) {
       const activeSession = activeSessionRef.current;
       const finalDurationSeconds = Math.max(state.elapsedSeconds, activeSession.durationSeconds);
       const finalSnrDb = activeSession.pointCount > 0 ? activeSession.lastSnrDb : state.snrDb;
+      const finalRespirationRate = state.respirationRate ?? activeSession.avgRespirationRate;
+      const finalRespirationConfidence = Math.max(state.respirationConfidence, activeSession.respirationConfidence ?? 0);
+      const finalHrv = state.hrv ?? activeSession.hrv ?? null;
       const finalized = summarizeSession(
         activeSession,
         state.history,
         finalDurationSeconds,
         finalSnrDb,
         Date.now(),
+        finalRespirationRate,
+        finalRespirationConfidence,
+        finalHrv,
       );
       activeSessionRef.current = null;
       lastSavedPointCountRef.current = 0;
@@ -77,7 +102,19 @@ export function useLocalRecords(state: PipelineState) {
           .catch((error) => setStorageError(error instanceof Error ? error.message : "本地数据库保存失败。"));
       }
     }
-  }, [reload, state.elapsedSeconds, state.history, state.mode, state.running, state.snrDb]);
+  }, [
+    checkIn,
+    measurementContext,
+    reload,
+    state.elapsedSeconds,
+    state.history,
+    state.hrv,
+    state.mode,
+    state.respirationConfidence,
+    state.respirationRate,
+    state.running,
+    state.snrDb,
+  ]);
 
   useEffect(() => {
     if (!activeSessionRef.current || state.history.length === 0) return;
@@ -89,6 +126,9 @@ export function useLocalRecords(state: PipelineState) {
       state.elapsedSeconds,
       state.snrDb,
       null,
+      state.respirationRate,
+      state.respirationConfidence,
+      state.hrv,
     );
     activeSessionRef.current = updated;
     lastSavedPointCountRef.current = state.history.length;
@@ -96,7 +136,7 @@ export function useLocalRecords(state: PipelineState) {
     void saveSession(updated)
       .then(reload)
       .catch((error) => setStorageError(error instanceof Error ? error.message : "本地数据库保存失败。"));
-  }, [reload, state.elapsedSeconds, state.history, state.snrDb]);
+  }, [reload, state.elapsedSeconds, state.history, state.hrv, state.respirationConfidence, state.respirationRate, state.snrDb]);
 
   return {
     sessions,
@@ -104,5 +144,6 @@ export function useLocalRecords(state: PipelineState) {
     reload,
     clearAll,
     exportJson,
+    exportCsv,
   };
 }

@@ -128,6 +128,22 @@ export function SessionReportPanel({ profile, sessions }: SessionReportPanelProp
           <span>可信度</span>
           <strong>{report.qualityLabel}</strong>
         </div>
+        <div>
+          <span>呼吸率</span>
+          <strong>{latest?.avgRespirationRate ? `${latest.avgRespirationRate}/min` : "--"}</strong>
+        </div>
+        <div>
+          <span>RMSSD</span>
+          <strong>{latest?.hrv ? `${latest.hrv.rmssd} ms` : "--"}</strong>
+        </div>
+        <div>
+          <span>压力指数</span>
+          <strong>{latest?.hrv ? latest.hrv.stressIndex : "--"}</strong>
+        </div>
+        <div>
+          <span>最佳窗口</span>
+          <strong>{latest?.bestWindowSeconds ? `${latest.bestWindowSeconds}s` : "--"}</strong>
+        </div>
       </div>
 
       <div className="report-chart-grid">
@@ -172,6 +188,32 @@ export function SessionReportPanel({ profile, sessions }: SessionReportPanelProp
           </div>
         </div>
       )}
+
+      <div className="weekly-card">
+        <div className="report-card-title">
+          <TrendingUp size={14} />
+          <span>本周健康周报预览</span>
+          <strong>{report.weeklySummary.sessionCount} 次</strong>
+        </div>
+        <div className="zone-grid">
+          <div>
+            <span>静息心率</span>
+            <strong>{report.weeklySummary.avgRestingBpm ? `${report.weeklySummary.avgRestingBpm} BPM` : "--"}</strong>
+          </div>
+          <div>
+            <span>HRV</span>
+            <strong>{report.weeklySummary.avgRmssd ? `${report.weeklySummary.avgRmssd} ms` : "--"}</strong>
+          </div>
+          <div>
+            <span>恢复评分</span>
+            <strong>{report.weeklySummary.recoveryScore ?? "--"}</strong>
+          </div>
+          <div>
+            <span>建议</span>
+            <strong>{(report.weeklySummary.recoveryScore ?? 0) >= 70 ? "正常训练" : "关注恢复"}</strong>
+          </div>
+        </div>
+      </div>
 
       <div className="suggestion-list">
         {report.suggestions.map((suggestion) => (

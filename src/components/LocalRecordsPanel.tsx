@@ -5,6 +5,7 @@ interface LocalRecordsPanelProps {
   sessions: readonly MeasurementSession[];
   error: string | null;
   onExport: () => void;
+  onExportCsv: () => void;
   onClear: () => void;
 }
 
@@ -17,7 +18,20 @@ function formatTime(timestamp: number): string {
   }).format(new Date(timestamp));
 }
 
-export function LocalRecordsPanel({ sessions, error, onExport, onClear }: LocalRecordsPanelProps) {
+function contextText(context: MeasurementSession["context"] | undefined): string {
+  switch (context) {
+    case "morning":
+      return "晨起";
+    case "post_exercise":
+      return "运动后";
+    case "sleep_prep":
+      return "睡前";
+    default:
+      return "普通";
+  }
+}
+
+export function LocalRecordsPanel({ sessions, error, onExport, onExportCsv, onClear }: LocalRecordsPanelProps) {
   const latest = sessions[0];
 
   return (
@@ -41,7 +55,11 @@ export function LocalRecordsPanel({ sessions, error, onExport, onClear }: LocalR
       <div className="record-actions">
         <button className="small-action" type="button" onClick={onExport} disabled={sessions.length === 0}>
           <Download size={14} />
-          <span>EXPORT</span>
+          <span>JSON</span>
+        </button>
+        <button className="small-action" type="button" onClick={onExportCsv} disabled={sessions.length === 0}>
+          <Download size={14} />
+          <span>CSV</span>
         </button>
         <button className="small-action danger" type="button" onClick={onClear} disabled={sessions.length === 0}>
           <Trash2 size={14} />
@@ -55,12 +73,12 @@ export function LocalRecordsPanel({ sessions, error, onExport, onClear }: LocalR
             <div>
               <strong>{session.avgBpm ? `${session.avgBpm} BPM` : "-- BPM"}</strong>
               <span>
-                {formatTime(session.startedAt)} · {session.mode.toUpperCase()} · {session.durationSeconds}s
+                {formatTime(session.startedAt)} · {contextText(session.context)} · {session.durationSeconds}s
               </span>
             </div>
             <div>
-              <strong>{Math.round(session.avgConfidence * 100)}%</strong>
-              <span>{session.pointCount} pts</span>
+              <strong>{session.hrv ? `${session.hrv.rmssd}ms` : `${Math.round(session.avgConfidence * 100)}%`}</strong>
+              <span>{session.avgRespirationRate ? `${session.avgRespirationRate}/min` : `${session.pointCount} pts`}</span>
             </div>
           </div>
         ))}
