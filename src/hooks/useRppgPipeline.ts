@@ -838,7 +838,7 @@ export function useRppgPipeline() {
           confidence,
           stability: stabilityScore(rawBpm, bpmEmaRef.current),
           background: backgroundRejectionScore(rawBpm, snrDb, backgroundAnalysis),
-          timing: estimateTimingQuality(skinWindow),
+          timing: 1,
           brightness: 1,
           face: 1,
         };

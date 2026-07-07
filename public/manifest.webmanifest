@@ -1,9 +1,10 @@
 {
-  "name": "VITA.IO rPPG Monitor",
+  "name": "VITA.IO 生命监护实验室",
   "short_name": "VITA.IO",
-  "description": "Local camera-based rPPG heart-rate monitor",
+  "description": "本地摄像头 rPPG 心率监测、趋势记录与运动科学报告",
   "start_url": ".",
   "scope": ".",
+  "display_override": ["window-controls-overlay", "standalone", "fullscreen"],
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#05070b",

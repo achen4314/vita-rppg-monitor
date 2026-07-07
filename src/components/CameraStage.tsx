@@ -20,13 +20,13 @@ interface CameraStageProps {
 function permissionText(permissionState: PermissionState | "unknown"): string {
   switch (permissionState) {
     case "granted":
-      return "CAMERA ALLOWED";
+      return "摄像头已允许";
     case "denied":
-      return "CAMERA BLOCKED";
+      return "摄像头被阻止";
     case "prompt":
-      return "PERMISSION PROMPT";
+      return "等待授权";
     default:
-      return "PERMISSION UNKNOWN";
+      return "权限未知";
   }
 }
 
@@ -51,7 +51,7 @@ export function CameraStage({
       <div className="stage-header">
         <div>
           <div className="brand">VITA.IO</div>
-          <div className="stage-subtitle">REMOTE PPG MONITOR</div>
+          <div className="stage-subtitle">远程 PPG 心率监测</div>
         </div>
         <div className="stage-control-stack">
           <div className="camera-picker">
@@ -79,15 +79,15 @@ export function CameraStage({
           <div className="stage-actions">
             <button className="icon-button primary" type="button" onClick={onStart} disabled={state.running}>
               <Camera size={17} />
-              <span>START</span>
+              <span>开始</span>
             </button>
             <button className="icon-button" type="button" onClick={onStartDemo} disabled={state.running}>
               <FlaskConical size={16} />
-              <span>DEMO</span>
+              <span>演示</span>
             </button>
             <button className="icon-button" type="button" onClick={onStop} disabled={!state.running}>
               <Square size={15} />
-              <span>STOP</span>
+              <span>停止</span>
             </button>
           </div>
         </div>
@@ -101,8 +101,8 @@ export function CameraStage({
         <div className="corner corner-tr" />
         <div className="corner corner-bl" />
         <div className="corner corner-br" />
-        <div className="background-tag">BG CTRL</div>
-        <div className="roi-tag">ROI FACE</div>
+        <div className="background-tag">背景对照</div>
+        <div className="roi-tag">脸部 ROI</div>
       </div>
 
       <div className="live-chart-dock">
@@ -115,21 +115,21 @@ export function CameraStage({
         </div>
         <div className="live-card live-card-trend">
           <div className="live-card-title">
-            <span>TREND</span>
+            <span>趋势</span>
             <strong>{Math.round(state.elapsedSeconds)}s</strong>
           </div>
           <TrendChart history={state.history} compact />
         </div>
         <div className="live-card live-card-lock">
           <div className="live-card-title">
-            <span>LOCK</span>
+            <span>锁定</span>
             <strong>{lockText}</strong>
           </div>
           <div className="lock-meter" aria-label="Signal quality">
             <div className="lock-meter-fill" style={{ height: `${liveQuality}%` }} />
           </div>
           <div className="lock-readout">
-            <span>QUALITY</span>
+            <span>质量</span>
             <strong>{liveQuality}%</strong>
           </div>
           <div className="lock-readout">
