@@ -36,6 +36,13 @@ export function zScore(values: readonly number[]): number[] {
   return values.map((value) => (value - avg) / sd);
 }
 
+export function median(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+}
+
 export function detrend(values: readonly number[]): number[] {
   const n = values.length;
   if (n < 3) return [...values];
@@ -163,4 +170,75 @@ export function estimateSampleRate(samples: readonly RgbSample[]): number {
   const durationSeconds = (last - first) / 1000;
   if (durationSeconds <= 0) return 30;
   return clamp((samples.length - 1) / durationSeconds, 12, 60);
+}
+
+function interpolateChannel(before: number, after: number, ratio: number): number {
+  return before + (after - before) * ratio;
+}
+
+export function resampleRgbSamples(samples: readonly RgbSample[]): {
+  samples: RgbSample[];
+  sampleRate: number;
+} {
+  if (samples.length < 2) {
+    return {
+      samples: [...samples],
+      sampleRate: estimateSampleRate(samples),
+    };
+  }
+
+  const sourceRate = estimateSampleRate(samples);
+  const targetRate = clamp(Math.min(30, Math.max(15, sourceRate)), 12, 30);
+  const firstTime = samples[0].t;
+  const lastTime = samples[samples.length - 1].t;
+  const durationSeconds = Math.max(0, (lastTime - firstTime) / 1000);
+  const outputLength = Math.max(2, Math.floor(durationSeconds * targetRate) + 1);
+  const output: RgbSample[] = [];
+  let sourceIndex = 0;
+
+  for (let index = 0; index < outputLength; index += 1) {
+    const targetTime = Math.min(lastTime, firstTime + (index * 1000) / targetRate);
+
+    while (sourceIndex < samples.length - 2 && samples[sourceIndex + 1].t < targetTime) {
+      sourceIndex += 1;
+    }
+
+    const before = samples[sourceIndex];
+    const after = samples[Math.min(sourceIndex + 1, samples.length - 1)];
+    const span = Math.max(1e-6, after.t - before.t);
+    const ratio = clamp((targetTime - before.t) / span, 0, 1);
+
+    output.push({
+      t: targetTime,
+      r: interpolateChannel(before.r, after.r, ratio),
+      g: interpolateChannel(before.g, after.g, ratio),
+      b: interpolateChannel(before.b, after.b, ratio),
+      luminance: interpolateChannel(before.luminance, after.luminance, ratio),
+    });
+  }
+
+  return {
+    samples: output,
+    sampleRate: targetRate,
+  };
+}
+
+export function estimateTimingQuality(samples: readonly RgbSample[]): number {
+  if (samples.length < 5) return 1;
+
+  const intervals: number[] = [];
+  for (let index = 1; index < samples.length; index += 1) {
+    const interval = samples[index].t - samples[index - 1].t;
+    if (interval > 0) intervals.push(interval);
+  }
+
+  if (intervals.length < 4) return 1;
+
+  const center = median(intervals);
+  if (center <= 0) return 0;
+
+  const absoluteDeviations = intervals.map((interval) => Math.abs(interval - center));
+  const mad = median(absoluteDeviations);
+  const jitterRatio = mad / center;
+  return clamp(1 - jitterRatio * 7, 0, 1);
 }

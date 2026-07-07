@@ -32,10 +32,7 @@ body,
 }
 
 body {
-  background:
-    radial-gradient(circle at 18% 16%, rgba(52, 231, 255, 0.07), transparent 28%),
-    radial-gradient(circle at 78% 24%, rgba(255, 94, 112, 0.06), transparent 24%),
-    linear-gradient(135deg, #05070b 0%, #071017 46%, #09090e 100%);
+  background: linear-gradient(135deg, #05070b 0%, #071017 46%, #09090e 100%);
   color: var(--text);
   overflow-x: hidden;
 }
@@ -347,6 +344,87 @@ button {
   color: var(--cyan);
 }
 
+.live-chart-dock {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.25fr) minmax(230px, 1fr) minmax(128px, 0.42fr);
+  gap: 12px;
+}
+
+.live-card {
+  min-width: 0;
+  border: 1px solid rgba(139, 170, 190, 0.2);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(15, 21, 28, 0.86), rgba(7, 11, 17, 0.9));
+  padding: 10px;
+}
+
+.live-card-title {
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 820;
+}
+
+.live-card-title strong {
+  color: var(--text);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.live-card-lock {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  column-gap: 10px;
+  row-gap: 8px;
+  align-content: start;
+}
+
+.live-card-lock .live-card-title {
+  grid-column: 1 / -1;
+}
+
+.lock-meter {
+  grid-row: span 2;
+  width: 22px;
+  height: 76px;
+  border: 1px solid rgba(141, 163, 177, 0.26);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+}
+
+.lock-meter-fill {
+  width: 100%;
+  min-height: 2px;
+  border-radius: 12px;
+  background: linear-gradient(0deg, var(--warn), var(--green), var(--cyan));
+  box-shadow: 0 0 12px rgba(52, 231, 255, 0.32);
+  transition: height 220ms ease;
+}
+
+.lock-readout {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.lock-readout span {
+  color: var(--dim);
+  font-size: 0.64rem;
+  font-weight: 800;
+}
+
+.lock-readout strong {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
 .data-stack {
   min-width: 0;
   display: grid;
@@ -530,7 +608,8 @@ button {
   gap: 8px;
 }
 
-.snr-grid > div {
+.snr-grid > div,
+.factor-grid > div {
   display: grid;
   gap: 2px;
   border: 1px solid rgba(141, 163, 177, 0.2);
@@ -545,9 +624,41 @@ button {
   font-weight: 780;
 }
 
-.snr-grid strong {
+.snr-grid strong,
+.factor-grid strong {
   color: var(--text);
   font-size: 1rem;
+}
+
+.factor-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.factor-grid span {
+  color: var(--dim);
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.precision-hint {
+  border: 1px solid rgba(141, 163, 177, 0.22);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 8px 10px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.precision-good {
+  color: var(--green);
+  border-color: rgba(113, 245, 173, 0.28);
+}
+
+.precision-warn {
+  color: var(--amber);
+  border-color: rgba(255, 211, 106, 0.26);
 }
 
 .error-text {
@@ -773,6 +884,24 @@ button {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .live-chart-dock {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .live-card-lock {
+    grid-column: span 2;
+    grid-template-columns: 28px repeat(2, minmax(0, 1fr));
+    align-items: center;
+  }
+
+  .live-card-lock .live-card-title {
+    grid-column: 1 / -1;
+  }
+
+  .lock-meter {
+    height: 62px;
+  }
+
   .heart-panel,
   .status-panel {
     grid-column: span 1;
@@ -789,11 +918,18 @@ button {
   .status-grid,
   .metrics-row,
   .snr-grid,
+  .factor-grid,
   .records-summary,
   .record-actions,
   .camera-picker,
-  .data-stack {
+  .data-stack,
+  .live-chart-dock {
     grid-template-columns: 1fr;
+  }
+
+  .live-card-lock {
+    grid-column: auto;
+    grid-template-columns: 24px 1fr;
   }
 
   .stage-header {

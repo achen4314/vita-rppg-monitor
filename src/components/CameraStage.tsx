@@ -1,6 +1,7 @@
 import { Camera, FlaskConical, RefreshCcw, Square } from "lucide-react";
 import type { RefObject } from "react";
 import type { CameraDevice, PipelineState } from "../hooks/useRppgPipeline";
+import { TrendChart, WaveChart } from "./Charts";
 
 interface CameraStageProps {
   videoRef: RefObject<HTMLVideoElement>;
@@ -42,6 +43,9 @@ export function CameraStage({
   onSelectDevice,
   onRefreshDevices,
 }: CameraStageProps) {
+  const liveQuality = Math.round(state.signalQuality * 100);
+  const lockText = state.status === "CALIBRATING" ? `${state.calibrationRemaining.toFixed(1)}s` : state.acceptedSignal ? "LOCKED" : "WAIT";
+
   return (
     <section className="camera-stage">
       <div className="stage-header">
@@ -99,6 +103,40 @@ export function CameraStage({
         <div className="corner corner-br" />
         <div className="background-tag">BG CTRL</div>
         <div className="roi-tag">ROI FACE</div>
+      </div>
+
+      <div className="live-chart-dock">
+        <div className="live-card live-card-wave">
+          <div className="live-card-title">
+            <span>LIVE PULSE</span>
+            <strong>{state.bpm === null ? "--" : `${state.bpm.toFixed(1)} BPM`}</strong>
+          </div>
+          <WaveChart values={state.pulseWave} compact />
+        </div>
+        <div className="live-card live-card-trend">
+          <div className="live-card-title">
+            <span>TREND</span>
+            <strong>{Math.round(state.elapsedSeconds)}s</strong>
+          </div>
+          <TrendChart history={state.history} compact />
+        </div>
+        <div className="live-card live-card-lock">
+          <div className="live-card-title">
+            <span>LOCK</span>
+            <strong>{lockText}</strong>
+          </div>
+          <div className="lock-meter" aria-label="Signal quality">
+            <div className="lock-meter-fill" style={{ height: `${liveQuality}%` }} />
+          </div>
+          <div className="lock-readout">
+            <span>QUALITY</span>
+            <strong>{liveQuality}%</strong>
+          </div>
+          <div className="lock-readout">
+            <span>SNR</span>
+            <strong>{state.snrDb.toFixed(1)} dB</strong>
+          </div>
+        </div>
       </div>
     </section>
   );

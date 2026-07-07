@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BrowserFaceDetector, type FaceDetection } from "../lib/faceDetector";
 import { type SpectrumBin } from "../lib/fft";
-import { analyzeRppgWindow } from "../lib/pos";
+import { analyzeRppgWindow, type RppgAnalysis } from "../lib/pos";
 import {
   assessGuidance,
   averageRgbFromRois,
@@ -12,7 +12,7 @@ import {
   type FaceRois,
   type Guidance,
 } from "../lib/roi";
-import { ButterworthBandpass, clamp, type RgbSample } from "../lib/signal";
+import { ButterworthBandpass, clamp, estimateTimingQuality, mean, type RgbSample } from "../lib/signal";
 
 export type PipelineStatus =
   | "IDLE"
@@ -32,6 +32,15 @@ export interface HistoryPoint {
   confidence: number;
 }
 
+export interface QualityFactors {
+  confidence: number;
+  stability: number;
+  background: number;
+  timing: number;
+  brightness: number;
+  face: number;
+}
+
 export interface CameraDevice {
   deviceId: string;
   label: string;
@@ -49,6 +58,9 @@ export interface PipelineState {
   elapsedSeconds: number;
   calibrationRemaining: number;
   signalQuality: number;
+  acceptedSignal: boolean;
+  qualityFactors: QualityFactors;
+  precisionHint: string;
   pulseWave: number[];
   skinSpectrum: SpectrumBin[];
   backgroundSpectrum: SpectrumBin[];
@@ -76,6 +88,16 @@ const HISTORY_INTERVAL_MS = 1_000;
 const DEMO_BPM = 72;
 const DEMO_WIDTH = 1280;
 const DEMO_HEIGHT = 720;
+const HISTORY_SECONDS = 90;
+
+const DEFAULT_QUALITY_FACTORS: QualityFactors = {
+  confidence: 0,
+  stability: 1,
+  background: 1,
+  timing: 1,
+  brightness: 0,
+  face: 0,
+};
 
 const INITIAL_STATE: PipelineState = {
   mode: "idle",
@@ -89,6 +111,9 @@ const INITIAL_STATE: PipelineState = {
   elapsedSeconds: 0,
   calibrationRemaining: CALIBRATION_MS / 1000,
   signalQuality: 0,
+  acceptedSignal: false,
+  qualityFactors: DEFAULT_QUALITY_FACTORS,
+  precisionHint: "等待稳定的脸部 ROI 与频谱窗口。",
   pulseWave: [],
   skinSpectrum: [],
   backgroundSpectrum: [],
@@ -157,6 +182,84 @@ function normalizeWave(values: readonly number[]): number[] {
   const centered = values.map((value) => value - mean);
   const maxAbs = centered.reduce((max, value) => Math.max(max, Math.abs(value)), 1e-6);
   return centered.map((value) => clamp(value / maxAbs, -1, 1));
+}
+
+function faceSizeScore(face: FaceDetection | null, videoWidth: number, videoHeight: number): number {
+  if (!face || videoWidth <= 0 || videoHeight <= 0) return 0;
+  const areaRatio = (face.box.width * face.box.height) / Math.max(1, videoWidth * videoHeight);
+  if (areaRatio >= 0.11 && areaRatio <= 0.32) return 1;
+  if (areaRatio < 0.05 || areaRatio > 0.48) return 0.25;
+  if (areaRatio < 0.11) return clamp((areaRatio - 0.05) / 0.06, 0.25, 1);
+  return clamp(1 - (areaRatio - 0.32) / 0.16, 0.25, 1);
+}
+
+function brightnessScore(luminance: number | null): number {
+  if (luminance === null || !Number.isFinite(luminance)) return 0.55;
+  if (luminance >= 70 && luminance <= 190) return 1;
+  if (luminance < 35 || luminance > 235) return 0.15;
+  if (luminance < 70) return clamp((luminance - 35) / 35, 0.15, 1);
+  return clamp(1 - (luminance - 190) / 45, 0.15, 1);
+}
+
+function stabilityScore(rawBpm: number | null, currentBpm: number | null): number {
+  if (rawBpm === null || currentBpm === null) return 1;
+  const delta = Math.abs(rawBpm - currentBpm);
+  return clamp(1 - delta / 22, 0, 1);
+}
+
+function backgroundRejectionScore(
+  skinBpm: number | null,
+  skinSnrDb: number,
+  backgroundAnalysis: RppgAnalysis | null,
+): number {
+  if (skinBpm === null || !backgroundAnalysis?.bpm) return 1;
+
+  const bpmDistance = Math.abs(backgroundAnalysis.bpm - skinBpm);
+  const backgroundLooksLikePulse =
+    backgroundAnalysis.snr.confidence > 0.42 &&
+    backgroundAnalysis.snr.peakEnergyRatio > 0.22 &&
+    backgroundAnalysis.snr.snrDb >= skinSnrDb - 1.5;
+
+  if (backgroundLooksLikePulse && bpmDistance <= 9) return 0.28;
+  if (backgroundLooksLikePulse) return 0.55;
+  return 1;
+}
+
+function qualityHint(factors: QualityFactors, enoughWindow: boolean, acceptedSignal: boolean): string {
+  if (!enoughWindow) return "正在收集 5 秒以上的稳定窗口。";
+  if (factors.face < 0.55) return "脸部占画面比例不理想，按提示调整距离。";
+  if (factors.brightness < 0.55) return "照明不稳定，换到均匀正面光会更准。";
+  if (factors.timing < 0.55) return "视频帧率抖动较大，保持手机/电脑稳定。";
+  if (factors.background < 0.55) return "背景对照区也出现心率峰，建议换背景或避开闪烁灯源。";
+  if (factors.stability < 0.55) return "心率峰在跳变，请保持静止再等待几秒。";
+  if (factors.confidence < 0.38) return "心率带峰值偏弱，继续保持静止。";
+  if (!acceptedSignal) return "信号接近可用，等待质量门控锁定。";
+  return "质量门控已锁定，读数可用于趋势参考。";
+}
+
+function combineQuality(factors: QualityFactors): number {
+  return clamp(
+    factors.confidence * 0.46 +
+      factors.stability * 0.14 +
+      factors.background * 0.16 +
+      factors.timing * 0.09 +
+      factors.brightness * 0.09 +
+      factors.face * 0.06,
+    0,
+    1,
+  );
+}
+
+function shouldAcceptSignal(rawBpm: number | null, factors: QualityFactors, quality: number): boolean {
+  return (
+    rawBpm !== null &&
+    quality >= 0.36 &&
+    factors.confidence >= 0.22 &&
+    factors.background >= 0.35 &&
+    factors.timing >= 0.35 &&
+    factors.brightness >= 0.3 &&
+    factors.face >= 0.3
+  );
 }
 
 function syntheticRgbSample(now: number, startTime: number, bpm = DEMO_BPM): {
@@ -336,12 +439,12 @@ function statusForFrame(
   face: FaceDetection | null,
   elapsedMs: number,
   enoughWindow: boolean,
-  confidence: number,
+  signalQuality: number,
 ): PipelineStatus {
   if (!face) return "NO_FACE";
   if (elapsedMs < CALIBRATION_MS) return "CALIBRATING";
   if (!enoughWindow) return "DETECTING";
-  if (confidence < 0.34) return "LOW_SIGNAL";
+  if (signalQuality < 0.38) return "LOW_SIGNAL";
   return "DETECTING";
 }
 
@@ -352,6 +455,7 @@ export function useRppgPipeline() {
   const demoCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const detectorRef = useRef<BrowserFaceDetector | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const animationRef = useRef<number | null>(null);
   const runningRef = useRef(false);
   const startingRef = useRef(false);
@@ -371,6 +475,23 @@ export function useRppgPipeline() {
   const selectedDeviceIdRef = useRef("");
   const waveFilterRef = useRef(new ButterworthBandpass({ sampleRate: 30, lowHz: 0.75, highHz: 4 }));
   const [state, setState] = useState<PipelineState>(INITIAL_STATE);
+
+  const requestWakeLock = useCallback(async () => {
+    try {
+      if (!navigator.wakeLock || document.visibilityState !== "visible") return;
+      wakeLockRef.current = await navigator.wakeLock.request("screen");
+    } catch {
+      wakeLockRef.current = null;
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(() => {
+    const wakeLock = wakeLockRef.current;
+    wakeLockRef.current = null;
+    if (wakeLock && !wakeLock.released) {
+      void wakeLock.release().catch(() => undefined);
+    }
+  }, []);
 
   const refreshDevices = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) {
@@ -540,6 +661,10 @@ export function useRppgPipeline() {
       let confidence = 0;
       let snrDb = 0;
       let peakEnergyRatio = 0;
+      let signalQuality = 0;
+      let acceptedSignal = false;
+      let qualityFactors = DEFAULT_QUALITY_FACTORS;
+      let precisionHint = qualityHint(qualityFactors, enoughWindow, false);
       let skinSpectrum: SpectrumBin[] = [];
       let backgroundSpectrum: SpectrumBin[] = [];
       let skinPeakBpm: number | null = null;
@@ -558,26 +683,37 @@ export function useRppgPipeline() {
         backgroundSpectrum = backgroundAnalysis?.spectrum.bins ?? [];
         skinPeakBpm = skinAnalysis.bpm;
         backgroundPeakBpm = backgroundAnalysis?.bpm ?? null;
+        qualityFactors = {
+          confidence,
+          stability: stabilityScore(rawBpm, bpmEmaRef.current),
+          background: backgroundRejectionScore(rawBpm, snrDb, backgroundAnalysis),
+          timing: estimateTimingQuality(skinWindow),
+          brightness: brightnessScore(mean(skinWindow.slice(-30).map((sample) => sample.luminance))),
+          face: faceSizeScore(face, videoWidth, videoHeight),
+        };
+        signalQuality = combineQuality(qualityFactors);
+        acceptedSignal = shouldAcceptSignal(rawBpm, qualityFactors, signalQuality);
+        precisionHint = qualityHint(qualityFactors, enoughWindow, acceptedSignal);
 
-        if (rawBpm !== null) {
-          const alpha = clamp(0.12 + confidence * 0.26, 0.12, 0.38);
+        if (rawBpm !== null && acceptedSignal) {
+          const alpha = clamp(0.08 + signalQuality * 0.24, 0.08, 0.32);
           bpmEmaRef.current = bpmEmaRef.current === null ? rawBpm : bpmEmaRef.current * (1 - alpha) + rawBpm * alpha;
         }
 
         if (elapsedMs >= CALIBRATION_MS && bpmEmaRef.current !== null) {
           visibleBpm = bpmEmaRef.current;
-          if (now - lastHistoryRef.current >= HISTORY_INTERVAL_MS) {
+          if (acceptedSignal && now - lastHistoryRef.current >= HISTORY_INTERVAL_MS) {
             lastHistoryRef.current = now;
             historyPoint = {
               t: now,
               bpm: visibleBpm,
-              confidence,
+              confidence: signalQuality,
             };
           }
         }
       }
 
-      const status = statusForFrame(face, elapsedMs, enoughWindow, confidence);
+      const status = statusForFrame(face, elapsedMs, enoughWindow, signalQuality);
 
       setState((previous) => ({
         ...previous,
@@ -589,7 +725,10 @@ export function useRppgPipeline() {
         confidence,
         snrDb,
         peakEnergyRatio,
-        signalQuality: confidence,
+        signalQuality,
+        acceptedSignal,
+        qualityFactors,
+        precisionHint,
         elapsedSeconds,
         calibrationRemaining,
         pulseWave: shouldUpdateWave ? normalizeWave(waveValuesRef.current) : previous.pulseWave,
@@ -597,7 +736,7 @@ export function useRppgPipeline() {
         backgroundSpectrum,
         skinPeakBpm,
         backgroundPeakBpm,
-        history: historyPoint ? [...previous.history, historyPoint].slice(-90) : previous.history,
+        history: historyPoint ? [...previous.history, historyPoint].slice(-HISTORY_SECONDS) : previous.history,
         guidance,
         fps: frameTimesRef.current.length,
         faceScore,
@@ -609,7 +748,7 @@ export function useRppgPipeline() {
         ...previous,
         mode: "camera",
         running: true,
-        status: statusForFrame(face, elapsedMs, false, previous.confidence),
+        status: statusForFrame(face, elapsedMs, false, previous.signalQuality),
         elapsedSeconds,
         calibrationRemaining,
         pulseWave: normalizeWave(waveValuesRef.current),
@@ -674,6 +813,10 @@ export function useRppgPipeline() {
       let confidence = 0;
       let snrDb = 0;
       let peakEnergyRatio = 0;
+      let signalQuality = 0;
+      let acceptedSignal = false;
+      let qualityFactors = DEFAULT_QUALITY_FACTORS;
+      let precisionHint = qualityHint(qualityFactors, enoughWindow, false);
       let skinSpectrum: SpectrumBin[] = [];
       let backgroundSpectrum: SpectrumBin[] = [];
       let skinPeakBpm: number | null = null;
@@ -691,20 +834,31 @@ export function useRppgPipeline() {
         backgroundSpectrum = backgroundAnalysis.spectrum.bins;
         skinPeakBpm = skinAnalysis.bpm;
         backgroundPeakBpm = backgroundAnalysis.bpm;
+        qualityFactors = {
+          confidence,
+          stability: stabilityScore(rawBpm, bpmEmaRef.current),
+          background: backgroundRejectionScore(rawBpm, snrDb, backgroundAnalysis),
+          timing: estimateTimingQuality(skinWindow),
+          brightness: 1,
+          face: 1,
+        };
+        signalQuality = combineQuality(qualityFactors);
+        acceptedSignal = shouldAcceptSignal(rawBpm, qualityFactors, signalQuality);
+        precisionHint = qualityHint(qualityFactors, enoughWindow, acceptedSignal);
 
-        if (rawBpm !== null) {
-          const alpha = clamp(0.12 + confidence * 0.26, 0.12, 0.38);
+        if (rawBpm !== null && acceptedSignal) {
+          const alpha = clamp(0.08 + signalQuality * 0.24, 0.08, 0.32);
           bpmEmaRef.current = bpmEmaRef.current === null ? rawBpm : bpmEmaRef.current * (1 - alpha) + rawBpm * alpha;
         }
 
         if (elapsedMs >= CALIBRATION_MS && bpmEmaRef.current !== null) {
           visibleBpm = bpmEmaRef.current;
-          if (now - lastHistoryRef.current >= HISTORY_INTERVAL_MS) {
+          if (acceptedSignal && now - lastHistoryRef.current >= HISTORY_INTERVAL_MS) {
             lastHistoryRef.current = now;
             historyPoint = {
               t: now,
               bpm: visibleBpm,
-              confidence,
+              confidence: signalQuality,
             };
           }
         }
@@ -714,13 +868,16 @@ export function useRppgPipeline() {
         ...previous,
         mode: "demo",
         running: true,
-        status: elapsedMs < CALIBRATION_MS ? "CALIBRATING" : "DETECTING",
+        status: elapsedMs < CALIBRATION_MS ? "CALIBRATING" : enoughWindow && signalQuality < 0.38 ? "LOW_SIGNAL" : "DETECTING",
         bpm: elapsedMs >= CALIBRATION_MS ? visibleBpm : null,
         rawBpm: elapsedMs >= CALIBRATION_MS ? rawBpm : null,
         confidence,
         snrDb,
         peakEnergyRatio,
-        signalQuality: confidence,
+        signalQuality,
+        acceptedSignal,
+        qualityFactors,
+        precisionHint,
         elapsedSeconds,
         calibrationRemaining,
         pulseWave: shouldUpdateWave ? normalizeWave(waveValuesRef.current) : previous.pulseWave,
@@ -728,7 +885,7 @@ export function useRppgPipeline() {
         backgroundSpectrum,
         skinPeakBpm,
         backgroundPeakBpm,
-        history: historyPoint ? [...previous.history, historyPoint].slice(-90) : previous.history,
+        history: historyPoint ? [...previous.history, historyPoint].slice(-HISTORY_SECONDS) : previous.history,
         guidance: {
           code: "GOOD",
           message: `Demo 模式：合成 ${DEMO_BPM} BPM 信号`,
@@ -744,7 +901,8 @@ export function useRppgPipeline() {
         ...previous,
         mode: "demo",
         running: true,
-        status: elapsedMs < CALIBRATION_MS ? "CALIBRATING" : "DETECTING",
+        status:
+          elapsedMs < CALIBRATION_MS ? "CALIBRATING" : previous.signalQuality > 0 && previous.signalQuality < 0.38 ? "LOW_SIGNAL" : "DETECTING",
         elapsedSeconds,
         calibrationRemaining,
         pulseWave: normalizeWave(waveValuesRef.current),
@@ -764,6 +922,7 @@ export function useRppgPipeline() {
 
   const stop = useCallback(() => {
     runningRef.current = false;
+    releaseWakeLock();
     if (animationRef.current !== null) {
       cancelAnimationFrame(animationRef.current);
       animationRef.current = null;
@@ -792,7 +951,7 @@ export function useRppgPipeline() {
       secureContext: previous.secureContext,
       mediaDevicesSupported: previous.mediaDevicesSupported,
     }));
-  }, []);
+  }, [releaseWakeLock]);
 
   const start = useCallback(async () => {
     if (runningRef.current || startingRef.current) return;
@@ -858,6 +1017,7 @@ export function useRppgPipeline() {
       });
 
       await video.play();
+      void requestWakeLock();
       startTimeRef.current = performance.now();
       runningRef.current = true;
       animationRef.current = requestAnimationFrame(processFrame);
@@ -880,7 +1040,7 @@ export function useRppgPipeline() {
     } finally {
       startingRef.current = false;
     }
-  }, [processFrame, refreshDevices, resetMeasurement]);
+  }, [processFrame, refreshDevices, requestWakeLock, resetMeasurement]);
 
   const startDemo = useCallback(async () => {
     if (runningRef.current || startingRef.current) return;
@@ -924,6 +1084,7 @@ export function useRppgPipeline() {
       video.muted = true;
       video.playsInline = true;
       await video.play();
+      void requestWakeLock();
 
       runningRef.current = true;
       animationRef.current = requestAnimationFrame(processDemoFrame);
@@ -945,7 +1106,7 @@ export function useRppgPipeline() {
     } finally {
       startingRef.current = false;
     }
-  }, [processDemoFrame, resetMeasurement]);
+  }, [processDemoFrame, requestWakeLock, resetMeasurement]);
 
   useEffect(() => {
     void refreshDevices();
@@ -960,6 +1121,17 @@ export function useRppgPipeline() {
       navigator.mediaDevices?.removeEventListener?.("devicechange", handleDeviceChange);
     };
   }, [refreshDevices]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && runningRef.current) {
+        void requestWakeLock();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [requestWakeLock]);
 
   useEffect(() => {
     return () => {

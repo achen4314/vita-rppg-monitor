@@ -2,8 +2,8 @@ import { analyzeSpectrum, nextPowerOfTwo, type SpectrumAnalysis } from "./fft";
 import {
   butterworthBandpass,
   detrend,
-  estimateSampleRate,
   mean,
+  resampleRgbSamples,
   standardDeviation,
   zScore,
   type RgbSample,
@@ -96,10 +96,11 @@ export function estimateHeartBandSnr(
 }
 
 export function analyzeRppgWindow(samples: readonly RgbSample[]): RppgAnalysis {
-  const sampleRate = estimateSampleRate(samples);
-  const posSignal = extractPosSignal(samples);
+  const resampled = resampleRgbSamples(samples);
+  const sampleRate = resampled.sampleRate;
+  const posSignal = extractPosSignal(resampled.samples);
   const filteredSignal = butterworthBandpass(posSignal, sampleRate, 0.75, 4);
-  const fftSize = nextPowerOfTwo(Math.max(256, Math.min(2048, filteredSignal.length)));
+  const fftSize = nextPowerOfTwo(Math.max(1024, Math.min(2048, filteredSignal.length * 4)));
   const spectrum = analyzeSpectrum(filteredSignal, sampleRate, {
     minHz: 0.75,
     maxHz: 4,

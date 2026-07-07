@@ -18,6 +18,7 @@ function statusText(state: PipelineState): string {
     case "CALIBRATING":
       return "CAL · WARMING UP";
     case "DETECTING":
+      if (state.acceptedSignal) return "SIGNAL LOCKED";
       return state.bpm ? "DETECTING" : "ACQUIRING WINDOW";
     case "NO_FACE":
       return "NO FACE";
@@ -110,6 +111,23 @@ export function StatusPanel({ state }: StatusPanelProps) {
           <span>PEAK ENERGY</span>
           <strong>{Math.round(state.peakEnergyRatio * 100)}%</strong>
         </div>
+      </div>
+      <div className="factor-grid">
+        <div>
+          <span>FACE</span>
+          <strong>{Math.round(state.qualityFactors.face * 100)}%</strong>
+        </div>
+        <div>
+          <span>TIMING</span>
+          <strong>{Math.round(state.qualityFactors.timing * 100)}%</strong>
+        </div>
+        <div>
+          <span>BG</span>
+          <strong>{Math.round(state.qualityFactors.background * 100)}%</strong>
+        </div>
+      </div>
+      <div className={`precision-hint ${state.acceptedSignal ? "precision-good" : "precision-warn"}`}>
+        {state.precisionHint}
       </div>
       {diagnosticText && <div className="diagnostic-text">{diagnosticText}</div>}
       {state.error && <div className="error-text">{state.error}</div>}
