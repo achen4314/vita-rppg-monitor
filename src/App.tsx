@@ -1,7 +1,9 @@
 import { HeartPulse } from "lucide-react";
 import { CameraStage } from "./components/CameraStage";
 import { SpectrumChart, TrendChart, WaveChart } from "./components/Charts";
+import { LocalRecordsPanel } from "./components/LocalRecordsPanel";
 import { StatusPanel } from "./components/StatusPanel";
+import { useLocalRecords } from "./hooks/useLocalRecords";
 import { useRppgPipeline } from "./hooks/useRppgPipeline";
 import "./styles.css";
 
@@ -33,6 +35,7 @@ function HeartReadout({
 export default function App() {
   const { videoRef, overlayRef, state, start, startDemo, stop, refreshDevices, setSelectedDeviceId } =
     useRppgPipeline();
+  const { sessions, storageError, clearAll, exportJson } = useLocalRecords(state);
 
   return (
     <main className="app-shell">
@@ -73,6 +76,8 @@ export default function App() {
           <div className="panel-title">HISTORY TREND</div>
           <TrendChart history={state.history} />
         </section>
+
+        <LocalRecordsPanel sessions={sessions} error={storageError} onExport={exportJson} onClear={clearAll} />
       </aside>
     </main>
   );

@@ -4,6 +4,24 @@
 
 线上地址：<https://achen4314.github.io/>
 
+## 手机安装
+
+Android Chrome / Edge：
+
+1. 打开 <https://achen4314.github.io/>
+2. 点浏览器菜单。
+3. 选择“安装应用”或“添加到主屏幕”。
+4. 安装后从桌面图标打开。
+
+iPhone Safari：
+
+1. 打开 <https://achen4314.github.io/>
+2. 点分享按钮。
+3. 选择“添加到主屏幕”。
+4. 从桌面图标打开。
+
+测量记录会保存在当前手机浏览器/安装应用的本地 IndexedDB 中，不上传服务器。
+
 ## 启动
 
 ```bash

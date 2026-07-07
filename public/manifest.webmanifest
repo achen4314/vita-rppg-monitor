@@ -1,0 +1,26 @@
+{
+  "name": "VITA.IO rPPG Monitor",
+  "short_name": "VITA.IO",
+  "description": "Local camera-based rPPG heart-rate monitor",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#05070b",
+  "theme_color": "#060910",
+  "categories": ["health", "utilities"],
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
