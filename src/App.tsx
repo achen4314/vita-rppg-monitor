@@ -2,8 +2,11 @@ import { HeartPulse } from "lucide-react";
 import { CameraStage } from "./components/CameraStage";
 import { SpectrumChart, TrendChart, WaveChart } from "./components/Charts";
 import { LocalRecordsPanel } from "./components/LocalRecordsPanel";
+import { ProfilePanel } from "./components/ProfilePanel";
+import { SessionReportPanel } from "./components/SessionReportPanel";
 import { StatusPanel } from "./components/StatusPanel";
 import { useLocalRecords } from "./hooks/useLocalRecords";
+import { useProfile } from "./hooks/useProfile";
 import { useRppgPipeline } from "./hooks/useRppgPipeline";
 import "./styles.css";
 
@@ -36,6 +39,7 @@ export default function App() {
   const { videoRef, overlayRef, state, start, startDemo, stop, refreshDevices, setSelectedDeviceId } =
     useRppgPipeline();
   const { sessions, storageError, clearAll, exportJson } = useLocalRecords(state);
+  const { profile, profileError, updateProfile } = useProfile();
 
   return (
     <main className="app-shell">
@@ -56,6 +60,8 @@ export default function App() {
       <aside className="data-stack">
         <HeartReadout bpm={state.bpm} status={state.status} calibrationRemaining={state.calibrationRemaining} />
         <StatusPanel state={state} />
+        <ProfilePanel profile={profile} error={profileError} onSave={updateProfile} />
+        <SessionReportPanel profile={profile} sessions={sessions} />
 
         <section className="panel chart-panel">
           <div className="panel-title">PULSE WAVEFORM</div>

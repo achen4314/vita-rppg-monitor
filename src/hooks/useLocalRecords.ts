@@ -59,11 +59,14 @@ export function useLocalRecords(state: PipelineState) {
     }
 
     if (!state.running && activeSessionRef.current) {
+      const activeSession = activeSessionRef.current;
+      const finalDurationSeconds = Math.max(state.elapsedSeconds, activeSession.durationSeconds);
+      const finalSnrDb = activeSession.pointCount > 0 ? activeSession.lastSnrDb : state.snrDb;
       const finalized = summarizeSession(
-        activeSessionRef.current,
+        activeSession,
         state.history,
-        state.elapsedSeconds,
-        state.snrDb,
+        finalDurationSeconds,
+        finalSnrDb,
         Date.now(),
       );
       activeSessionRef.current = null;

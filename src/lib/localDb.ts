@@ -1,8 +1,10 @@
 import type { HistoryPoint, PipelineMode } from "../hooks/useRppgPipeline";
 
 const DB_NAME = "vita-rppg-local";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const SESSION_STORE = "sessions";
+const PROFILE_STORE = "profile";
+const DEFAULT_PROFILE_ID = "default";
 
 export interface SavedTrendPoint {
   offsetSeconds: number;
@@ -26,6 +28,30 @@ export interface MeasurementSession {
   points: SavedTrendPoint[];
 }
 
+export interface PersonalProfile {
+  id: typeof DEFAULT_PROFILE_ID;
+  displayName: string;
+  age: number | null;
+  sex: "unspecified" | "female" | "male" | "other";
+  primarySport: string;
+  trainingGoal: "general" | "fat_loss" | "endurance" | "performance" | "recovery";
+  weeklySessions: number | null;
+  notes: string;
+  updatedAt: number;
+}
+
+export const DEFAULT_PROFILE: PersonalProfile = {
+  id: DEFAULT_PROFILE_ID,
+  displayName: "",
+  age: null,
+  sex: "unspecified",
+  primarySport: "",
+  trainingGoal: "general",
+  weeklySessions: null,
+  notes: "",
+  updatedAt: Date.now(),
+};
+
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -37,6 +63,9 @@ function openDb(): Promise<IDBDatabase> {
         store.createIndex("updatedAt", "updatedAt");
         store.createIndex("startedAt", "startedAt");
       }
+      if (!db.objectStoreNames.contains(PROFILE_STORE)) {
+        db.createObjectStore(PROFILE_STORE, { keyPath: "id" });
+      }
     };
 
     request.onsuccess = () => resolve(request.result);
@@ -45,14 +74,15 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 function withStore<T>(
+  storeName: typeof SESSION_STORE | typeof PROFILE_STORE,
   mode: IDBTransactionMode,
   callback: (store: IDBObjectStore) => IDBRequest<T> | void,
 ): Promise<T | undefined> {
   return openDb().then(
     (db) =>
       new Promise<T | undefined>((resolve, reject) => {
-        const transaction = db.transaction(SESSION_STORE, mode);
-        const store = transaction.objectStore(SESSION_STORE);
+        const transaction = db.transaction(storeName, mode);
+        const store = transaction.objectStore(storeName);
         const request = callback(store);
         let result: T | undefined;
 
@@ -127,24 +157,41 @@ export function summarizeSession(
 }
 
 export async function saveSession(session: MeasurementSession): Promise<void> {
-  await withStore("readwrite", (store) => store.put(session));
+  await withStore(SESSION_STORE, "readwrite", (store) => store.put(session));
 }
 
 export async function getSessions(): Promise<MeasurementSession[]> {
-  const sessions = (await withStore<MeasurementSession[]>("readonly", (store) => store.getAll())) ?? [];
+  const sessions = (await withStore<MeasurementSession[]>(SESSION_STORE, "readonly", (store) => store.getAll())) ?? [];
   return sessions.sort((a, b) => b.startedAt - a.startedAt);
 }
 
 export async function clearSessions(): Promise<void> {
-  await withStore("readwrite", (store) => store.clear());
+  await withStore(SESSION_STORE, "readwrite", (store) => store.clear());
+}
+
+export async function getProfile(): Promise<PersonalProfile> {
+  const profile = await withStore<PersonalProfile>(PROFILE_STORE, "readonly", (store) => store.get(DEFAULT_PROFILE_ID));
+  return profile ?? DEFAULT_PROFILE;
+}
+
+export async function saveProfile(profile: PersonalProfile): Promise<void> {
+  await withStore(PROFILE_STORE, "readwrite", (store) =>
+    store.put({
+      ...profile,
+      id: DEFAULT_PROFILE_ID,
+      updatedAt: Date.now(),
+    }),
+  );
 }
 
 export async function exportSessionsJson(): Promise<string> {
   const sessions = await getSessions();
+  const profile = await getProfile();
   return JSON.stringify(
     {
       app: "VITA.IO rPPG Monitor",
       exportedAt: new Date().toISOString(),
+      profile,
       sessions,
     },
     null,
