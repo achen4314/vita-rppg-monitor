@@ -17,7 +17,7 @@ export interface NativeHealthMeasurement {
 
 interface VitaHealthPlugin {
   getStatus(): Promise<NativeHealthStatus>;
-  requestPermissions(): Promise<NativeHealthStatus>;
+  requestHealthPermissions(): Promise<NativeHealthStatus>;
   writeMeasurement(measurement: NativeHealthMeasurement): Promise<{ written: number }>;
 }
 
@@ -34,7 +34,7 @@ export async function getNativeHealthStatus(): Promise<NativeHealthStatus> {
 }
 
 export async function requestNativeHealthPermissions(): Promise<NativeHealthStatus> {
-  return VitaHealth.requestPermissions();
+  return VitaHealth.requestHealthPermissions();
 }
 
 export async function writeNativeHealthMeasurement(measurement: NativeHealthMeasurement): Promise<number> {

@@ -64,7 +64,7 @@ class VitaHealthPlugin : Plugin() {
     }
 
     @PluginMethod
-    fun requestPermissions(call: PluginCall) {
+    fun requestHealthPermissions(call: PluginCall) {
         val sdkStatus = HealthConnectClient.getSdkStatus(context)
         if (sdkStatus != HealthConnectClient.SDK_AVAILABLE) {
             call.resolve(statusPayload(emptySet(), sdkStatus))
