@@ -1,6 +1,6 @@
 # VITA.IO rPPG Monitor
 
-本项目是一个本地浏览器 rPPG 心率监测 app。视频帧在浏览器本地处理，不上传摄像头画面。
+本项目是一个本地 rPPG 心率与运动恢复应用。React、POS/FFT/滤波和 MediaPipe 代码同时服务于 Web/PWA 与 Capacitor 原生应用；视频帧始终在设备本地处理，不上传摄像头画面。
 
 线上地址：<https://achen4314.github.io/>
 
@@ -30,6 +30,55 @@ npm run dev
 ```
 
 打开 `http://127.0.0.1:5173/`，点击 `START`，允许摄像头权限。
+
+## 原生 App 路径
+
+当前采用 Capacitor 8 单代码库方案：
+
+```text
+React + TypeScript + rPPG
+          |
+       npm build
+          |
+        dist
+       /    \
+Android     iOS
+WebView     WKWebView
+```
+
+Android 原生工程已位于 `android/`，包名为 `io.vita.rppg`。摄像头权限、前置摄像头能力、深色状态栏、启动页、应用图标、触觉反馈和安全 WebView 已配置。
+
+### Android 本地构建
+
+要求 Node.js 22、Android Studio、JDK 21 与 Android SDK 36：
+
+```bash
+npm ci
+npm run app:sync
+npm run android:open
+```
+
+在 Android Studio 中连接手机后点击 Run。也可以直接生成调试 APK：
+
+```bash
+npm run android:apk
+```
+
+产物位于 `android/app/build/outputs/apk/debug/app-debug.apk`。
+
+仓库同时提供 `.github/workflows/android-apk.yml`。推送到 `main` 后会自动构建 APK，可在 GitHub Actions 的 `vita-io-android-debug` artifact 中下载。
+
+### 商店发布
+
+Android 上架需要创建签名密钥、生成 release AAB、在 Google Play Console 配置隐私政策和数据安全声明。调试 APK 只用于测试，不用于正式上架。
+
+iOS 使用相同 Web 代码，但原生工程必须在 macOS/Xcode 上创建、签名和归档：安装 `@capacitor/ios`、执行 `npx cap add ios` 与 `npx cap sync ios`，然后在 Xcode 配置相机用途说明、开发者团队和 App Store Connect。
+
+### 数据与健康平台
+
+- 当前：档案、测量、HRV、呼吸率与训练日志保存在本机 IndexedDB，可导出 JSON/CSV。
+- 下一阶段：Android 接入 Health Connect，iOS 接入 HealthKit；只同步用户授权的指标，不同步原始视频帧。
+- 正式版建议将结构化数据迁移到加密 SQLite，并保留用户控制的导入、导出和清除入口。
 
 ## 摄像头权限
 

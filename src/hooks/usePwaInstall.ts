@@ -1,7 +1,9 @@
+import { Capacitor } from "@capacitor/core";
 import { useCallback, useEffect, useState } from "react";
 
 function isStandalone(): boolean {
   return (
+    Capacitor.isNativePlatform() ||
     window.matchMedia("(display-mode: standalone)").matches ||
     window.matchMedia("(display-mode: fullscreen)").matches ||
     Boolean((navigator as Navigator & { standalone?: boolean }).standalone)

@@ -2,9 +2,10 @@ import type { HistoryPoint, PipelineMode } from "../hooks/useRppgPipeline";
 import type { HRVMetrics } from "./pos";
 
 const DB_NAME = "vita-rppg-local";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const SESSION_STORE = "sessions";
 const PROFILE_STORE = "profile";
+const TRAINING_STORE = "training-logs";
 const DEFAULT_PROFILE_ID = "default";
 
 export interface SavedTrendPoint {
@@ -63,6 +64,20 @@ export interface PersonalProfile {
   updatedAt: number;
 }
 
+export type TrainingZone = "z1" | "z2" | "z3" | "z4" | "z5";
+
+export interface TrainingLog {
+  id: string;
+  performedAt: number;
+  durationMinutes: number;
+  rpe: number;
+  zone: TrainingZone;
+  activity: string;
+  note: string;
+  load: number;
+  updatedAt: number;
+}
+
 export const DEFAULT_PROFILE: PersonalProfile = {
   id: DEFAULT_PROFILE_ID,
   displayName: "",
@@ -89,6 +104,10 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(PROFILE_STORE)) {
         db.createObjectStore(PROFILE_STORE, { keyPath: "id" });
       }
+      if (!db.objectStoreNames.contains(TRAINING_STORE)) {
+        const store = db.createObjectStore(TRAINING_STORE, { keyPath: "id" });
+        store.createIndex("performedAt", "performedAt");
+      }
     };
 
     request.onsuccess = () => resolve(request.result);
@@ -97,7 +116,7 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 function withStore<T>(
-  storeName: typeof SESSION_STORE | typeof PROFILE_STORE,
+  storeName: typeof SESSION_STORE | typeof PROFILE_STORE | typeof TRAINING_STORE,
   mode: IDBTransactionMode,
   callback: (store: IDBObjectStore) => IDBRequest<T> | void,
 ): Promise<T | undefined> {
@@ -258,15 +277,45 @@ export async function saveProfile(profile: PersonalProfile): Promise<void> {
   );
 }
 
+export function createTrainingLog(input: Omit<TrainingLog, "id" | "load" | "updatedAt">): TrainingLog {
+  const durationMinutes = Math.max(1, Math.min(600, Math.round(input.durationMinutes)));
+  const rpe = Math.max(1, Math.min(10, Math.round(input.rpe)));
+  return {
+    ...input,
+    durationMinutes,
+    rpe,
+    activity: input.activity.trim() || "训练",
+    note: input.note.trim(),
+    id: crypto.randomUUID ? crypto.randomUUID() : `training-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    load: durationMinutes * rpe,
+    updatedAt: Date.now(),
+  };
+}
+
+export async function saveTrainingLog(log: TrainingLog): Promise<void> {
+  await withStore(TRAINING_STORE, "readwrite", (store) => store.put(log));
+}
+
+export async function getTrainingLogs(): Promise<TrainingLog[]> {
+  const logs = (await withStore<TrainingLog[]>(TRAINING_STORE, "readonly", (store) => store.getAll())) ?? [];
+  return logs.sort((a, b) => b.performedAt - a.performedAt);
+}
+
+export async function deleteTrainingLog(id: string): Promise<void> {
+  await withStore(TRAINING_STORE, "readwrite", (store) => store.delete(id));
+}
+
 export async function exportSessionsJson(): Promise<string> {
   const sessions = await getSessions();
   const profile = await getProfile();
+  const trainingLogs = await getTrainingLogs();
   return JSON.stringify(
     {
       app: "VITA.IO rPPG Monitor",
       exportedAt: new Date().toISOString(),
       profile,
       sessions,
+      trainingLogs,
     },
     null,
     2,

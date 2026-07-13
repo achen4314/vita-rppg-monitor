@@ -1,10 +1,12 @@
 import { useEffect, useRef } from "react";
 
-export function CinematicBackdrop() {
+export function CinematicBackdrop({ active = true }: { active?: boolean }) {
   const threeCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const p5LayerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (!active) return undefined;
+    if (window.matchMedia("(max-width: 760px)").matches) return undefined;
     const canvas = threeCanvasRef.current;
     if (!canvas) return undefined;
 
@@ -117,9 +119,11 @@ export function CinematicBackdrop() {
       disposed = true;
       cleanup?.();
     };
-  }, []);
+  }, [active]);
 
   useEffect(() => {
+    if (!active) return undefined;
+    if (window.matchMedia("(max-width: 760px)").matches) return undefined;
     const parent = p5LayerRef.current;
     if (!parent) return undefined;
 
@@ -178,12 +182,12 @@ export function CinematicBackdrop() {
       disposed = true;
       instance?.remove();
     };
-  }, []);
+  }, [active]);
 
   return (
     <div className="cinematic-backdrop" aria-hidden="true">
-      <canvas ref={threeCanvasRef} className="three-backdrop" />
-      <div ref={p5LayerRef} className="p5-backdrop" />
+      {active && <canvas ref={threeCanvasRef} className="three-backdrop" />}
+      {active && <div ref={p5LayerRef} className="p5-backdrop" />}
       <div className="film-grain" />
       <div className="vignette" />
       <div className="chromatic-edge chromatic-edge-left" />
