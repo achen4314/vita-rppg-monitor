@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>VITA.IO 隐私政策</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif; }
+      body { margin: 0; background: #05070b; color: #e8f2f5; line-height: 1.75; }
+      main { width: min(760px, calc(100% - 32px)); margin: 0 auto; padding: 48px 0 72px; }
+      h1 { margin: 0 0 8px; font-size: clamp(2rem, 7vw, 3.5rem); }
+      h2 { margin: 32px 0 8px; color: #4de4df; font-size: 1.1rem; }
+      p, li { color: #aebcc4; }
+      strong { color: #fff; }
+      a { color: #4de4df; }
+      .meta { color: #ff6b6f; font-size: 0.88rem; }
+      .notice { margin-top: 36px; border-left: 3px solid #ff6b6f; padding: 12px 16px; background: #10151d; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="meta">VITA.IO · 生效日期：2026-07-13</p>
+      <h1>隐私政策</h1>
+      <p>VITA.IO 是用于运动与恢复趋势观察的本地生物信号工具。本政策说明应用如何处理摄像头权限、测量指标和训练记录。</p>
+
+      <h2>1. 摄像头与视频帧</h2>
+      <p><strong>摄像头画面仅在当前设备上实时处理。</strong>应用不会录制、保存或上传原始视频帧，也不会使用摄像头内容识别用户身份。</p>
+
+      <h2>2. 本地健康与训练数据</h2>
+      <p>心率、HRV、呼吸率、信号质量、测量场景、个人档案和训练日志默认保存在当前设备的本地数据库中。用户可以在应用内导出或清除这些数据。</p>
+
+      <h2>3. Health Connect 与 Apple Health</h2>
+      <p>原生版本只会在用户明确授权后访问所选择的健康数据类型。应用将遵循最小权限原则，并提供暂停同步和管理系统权限的入口。原始视频帧不会写入健康平台。</p>
+
+      <h2>4. 网络与第三方处理</h2>
+      <p>rPPG 算法、MediaPipe 运行时和人脸检测模型随应用本地提供。当前版本不提供广告，不出售个人数据，也不将测量数据用于跨应用追踪。</p>
+
+      <h2>5. 数据保留与删除</h2>
+      <p>本地数据会保留到用户在应用内清除数据或卸载应用。导出的 JSON/CSV 文件由用户自行管理。系统健康库中的数据由对应平台权限和删除机制控制。</p>
+
+      <h2>6. 使用边界</h2>
+      <p>VITA.IO 不是医疗器械，不用于诊断、治疗或替代专业医疗设备。出现持续异常或身体不适时，应咨询医疗专业人员。</p>
+
+      <h2>7. 联系方式</h2>
+      <p>隐私或数据问题可通过 <a href="https://github.com/achen4314/vita-rppg-monitor/issues">项目支持页面</a> 提交。</p>
+
+      <p class="notice">政策如因功能或平台权限变化而更新，会同步更新生效日期和应用内说明。</p>
+    </main>
+  </body>
+</html>
