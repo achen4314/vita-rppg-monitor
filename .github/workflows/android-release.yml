@@ -1,0 +1,99 @@
+name: Build Android Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: Public version, for example 1.0.0
+        required: true
+        default: 1.0.0
+      version_code:
+        description: Monotonic Play Store version code
+        required: true
+        default: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      VITA_VERSION_NAME: ${{ inputs.version_name }}
+      VITA_VERSION_CODE: ${{ inputs.version_code }}
+      VITA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      VITA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      VITA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      VITA_KEYSTORE_TYPE: ${{ secrets.ANDROID_KEYSTORE_TYPE }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare optional release signing
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [[ -n "$KEYSTORE_BASE64" && -n "$VITA_KEYSTORE_PASSWORD" && -n "$VITA_KEY_ALIAS" && -n "$VITA_KEY_PASSWORD" ]]; then
+            mkdir -p android/keystore
+            echo "$KEYSTORE_BASE64" | base64 --decode > android/keystore/vita-upload.p12
+            echo "VITA_KEYSTORE_PATH=$GITHUB_WORKSPACE/android/keystore/vita-upload.p12" >> "$GITHUB_ENV"
+            echo "mode=signed" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=unsigned" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build web app and sync native project
+        run: npm run app:sync
+
+      - name: Build release AAB and APK
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew bundleRelease assembleRelease --no-daemon
+
+      - name: Normalize artifacts
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
+          cp android/app/build/outputs/bundle/release/app-release.aab release-artifacts/vita-io-${VITA_VERSION_NAME}.aab
+          APK_PATH=$(find android/app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)
+          cp "$APK_PATH" release-artifacts/vita-io-${VITA_VERSION_NAME}.apk
+
+      - name: Verify signed artifacts
+        if: steps.signing.outputs.mode == 'signed'
+        run: |
+          jarsigner -verify -strict -verbose release-artifacts/vita-io-${VITA_VERSION_NAME}.aab
+          apksigner verify --verbose release-artifacts/vita-io-${VITA_VERSION_NAME}.apk
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: vita-io-android-${{ inputs.version_name }}-${{ steps.signing.outputs.mode }}
+          path: release-artifacts/*
+          if-no-files-found: error
+          retention-days: 30

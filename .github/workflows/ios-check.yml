@@ -1,0 +1,71 @@
+name: Build iOS Simulator App
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "public/**"
+      - "scripts/prepare-ios.sh"
+      - "package.json"
+      - "package-lock.json"
+      - "capacitor.config.ts"
+      - ".github/workflows/ios-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  simulator:
+    runs-on: macos-26
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Install Capacitor iOS platform
+        run: npm install --no-save --package-lock=false @capacitor/ios@8.4.1
+
+      - name: Build and prepare iOS project
+        run: |
+          npm run build
+          bash scripts/prepare-ios.sh
+
+      - name: Build simulator app
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/ios-derived \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package simulator app
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/ios-derived/Build/Products/Debug-iphonesimulator/App.app \
+            vita-io-ios-simulator.zip
+
+      - name: Upload iOS project and simulator build
+        uses: actions/upload-artifact@v7
+        with:
+          name: vita-io-ios-simulator
+          path: |
+            vita-io-ios-simulator.zip
+            ios/
+          if-no-files-found: error
+          retention-days: 30

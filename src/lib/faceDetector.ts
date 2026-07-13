@@ -1,10 +1,9 @@
 import { FaceDetector, FilesetResolver, type Detection } from "@mediapipe/tasks-vision";
 import type { Rect } from "./roi";
 
-const TASKS_VERSION = "0.10.35";
-const WASM_ROOT = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${TASKS_VERSION}/wasm`;
-const MODEL_URL =
-  "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite";
+const assetUrl = (path: string) => new URL(path, document.baseURI).toString();
+const WASM_ROOT = assetUrl("mediapipe/wasm");
+const MODEL_URL = assetUrl("mediapipe/models/blaze_face_short_range.tflite");
 
 export interface FaceDetection {
   box: Rect;

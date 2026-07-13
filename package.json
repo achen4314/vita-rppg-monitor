@@ -10,6 +10,7 @@
     "android:open": "npm run app:sync && cap open android",
     "android:run": "npm run app:sync && cap run android",
     "android:apk": "npm run app:sync && cd android && gradlew.bat assembleDebug",
+    "android:bundle": "npm run app:sync && cd android && gradlew.bat bundleRelease",
     "doctor": "powershell -ExecutionPolicy Bypass -File scripts/camera-doctor.ps1",
     "preview": "vite preview --host 127.0.0.1"
   },

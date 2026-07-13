@@ -80,6 +80,7 @@ export default function App() {
   const { profile, profileError, updateProfile } = useProfile();
   const { logs: trainingLogs, error: trainingError, addLog, removeLog } = useTrainingLogs();
   const { canInstall, installed, install } = usePwaInstall();
+  const latestSession = sessions.find((session) => session.endedAt !== null && session.avgBpm !== null) ?? null;
 
   const openView = useCallback((view: AppView) => {
     setActiveView(view);
@@ -237,7 +238,7 @@ export default function App() {
             <SectionHeading eyebrow="ATHLETE PROFILE" title="档案与应用" description="个人基线、训练目标与数据控制都在这里管理。" />
             <div className="profile-layout">
               <ProfilePanel profile={profile} error={profileError} onSave={updateProfile} />
-              <DataSettingsPanel canInstall={canInstall} installed={installed} onInstall={install} onExportJson={exportJson} onExportCsv={exportCsv} hasRecords={sessions.length > 0 || trainingLogs.length > 0} />
+              <DataSettingsPanel canInstall={canInstall} installed={installed} onInstall={install} onExportJson={exportJson} onExportCsv={exportCsv} hasRecords={sessions.length > 0 || trainingLogs.length > 0} latestSession={latestSession} />
               <section className="science-boundary panel">
                 <strong>测量边界</strong>
                 <p>VITA.IO 是训练与恢复趋势工具，不是医疗器械。心率异常或持续不适时，请以专业医疗设备和医生评估为准。</p>

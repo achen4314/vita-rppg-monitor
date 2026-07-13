@@ -1,4 +1,13 @@
 apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+def vitaVersionCode = (System.getenv('VITA_VERSION_CODE') ?: '1').toInteger()
+def vitaVersionName = System.getenv('VITA_VERSION_NAME') ?: '1.0.0'
+def vitaKeystorePath = System.getenv('VITA_KEYSTORE_PATH')
+def vitaKeystorePassword = System.getenv('VITA_KEYSTORE_PASSWORD')
+def vitaKeyAlias = System.getenv('VITA_KEY_ALIAS')
+def vitaKeyPassword = System.getenv('VITA_KEY_PASSWORD')
+def hasReleaseSigning = [vitaKeystorePath, vitaKeystorePassword, vitaKeyAlias, vitaKeyPassword].every { it }
 
 android {
     namespace = "io.vita.rppg"
@@ -7,8 +16,8 @@ android {
         applicationId "io.vita.rppg"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode vitaVersionCode
+        versionName vitaVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,11 +25,32 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(vitaKeystorePath)
+                storePassword vitaKeystorePassword
+                keyAlias vitaKeyAlias
+                keyPassword vitaKeyPassword
+                storeType System.getenv('VITA_KEYSTORE_TYPE') ?: 'PKCS12'
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
     }
 }
 
@@ -36,6 +66,8 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    implementation "androidx.health.connect:connect-client:1.1.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
